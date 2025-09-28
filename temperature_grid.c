@@ -29,11 +29,13 @@
  * It will calculate the joint resistance only if there are values defined within the array or rx,ry,rz values. */
 double find_res_3D(int n, int i, int j, grid_model_t *model,int choice)
 {
-  int hasRes = model->layers[n].b2gmap[i][j]->hasRes;
+  /* ZYH: if (b2gmap[i][j] == NULL) using layer default RC	*/
+  blist_t *ptr = model->layers[n].b2gmap[i][j];
+  // int hasRes = model->layers[n].b2gmap[i][j]->hasRes;
   //Returns the rx of the grid cell
   if(choice==1)
   {
-      if(!hasRes)			
+      if(!(ptr && ptr->hasRes))
         return model->layers[n].rx;
       else
         return model->layers[n].b2gmap[i][j]->rx;
@@ -42,7 +44,7 @@ double find_res_3D(int n, int i, int j, grid_model_t *model,int choice)
   //Returns the ry of the grid cell
   else if(choice==2)
   {	
-      if(!hasRes)			
+      if(!(ptr && ptr->hasRes))
         return model->layers[n].ry;
       else
         return model->layers[n].b2gmap[i][j]->ry;
@@ -51,11 +53,12 @@ double find_res_3D(int n, int i, int j, grid_model_t *model,int choice)
   //Returns the rz of the grid cell
   else if(choice==3)
   {	
-      if(!hasRes)			
+      if(!(ptr && ptr->hasRes))
         return model->layers[n].rz;
       else
         return model->layers[n].b2gmap[i][j]->rz;
   }
+  /* end->ZYH */
 
   return 0;
 }//end->BU_3D
@@ -63,7 +66,9 @@ double find_res_3D(int n, int i, int j, grid_model_t *model,int choice)
 /* BU_3D: finds capacitance of 3D cell.*/
 double find_cap_3D(int n, int i, int j, grid_model_t *model)
 {
-  if (model->layers[n].b2gmap[i][j]->lock == TRUE) 
+  /* ZYH: if (b2gmap[i][j] == NULL) using layer default RC	*/
+  if (model->layers[n].b2gmap[i][j] && model->layers[n].b2gmap[i][j]->lock == TRUE)
+  /* end->ZYH */
   {
       // Return the capacitance of the unit that meets the occupancy threshold
       return model->layers[n].b2gmap[i][j]->capacitance;
@@ -219,20 +224,28 @@ void blist_append(blist_t *head, int idx, double occupancy,double res, double sp
 }
 
 /* compute the power/temperature average weighted by occupancies	*/
-double blist_avg(blist_t *ptr, flp_t *flp, double *v, int type)
+/* ZYH: add init_temp initialization for 'type == V_TEMP' */
+double blist_avg(blist_t *ptr, flp_t *flp, double *v, int type, double init_temp)
 {
   double  val = 0.0;
+  double occupancy_sum = 0.0;
 
   for(; ptr; ptr = ptr->next) 
   {
       if (type == V_POWER)
         val += ptr->occupancy * v[ptr->idx] / (flp->units[ptr->idx].width * 
                                                flp->units[ptr->idx].height);
-      else if (type == V_TEMP)		   
+      else if (type == V_TEMP) {
         val += ptr->occupancy * v[ptr->idx];
+        occupancy_sum += ptr->occupancy;
+      }
       else
         fatal("unknown vector type\n");
   }		
+  if (type == V_TEMP) {
+    val += (1.0 - occupancy_sum) * init_temp;
+  }
+  /* end->ZYH */
 
   return val;		   
 }
@@ -326,6 +339,9 @@ int dumpBL(grid_model_t *model)
 
   printf("Bmatrix dumped\n");
   printf("Lmatrix dumped\n\n");
+  /* ZYH: exit immediately, no need of simulation */
+  exit(0);
+  /* end->ZYH */
   
   return 0;
 }	  
@@ -456,6 +472,40 @@ void set_bgmap(grid_model_t *model, layer_t *layer)
           }
       }
   }
+  /* ZYH: complement parallel resistance for b2gmaps not filled by flp units	*/
+  if(model->config.detailed_3D_used) {
+    res = 1/layer->k;
+    sh = layer->sp;
+    /* This code takes reference from function 'reset_b2gmap()' in this file */
+    for(i=0; i < model->rows; i++) {
+      for(j=0; j < model->cols; j++) {
+        /* This code takes reference from function 'blist_append()' in this file */
+        if(layer->b2gmap[i][j] && (layer->b2gmap[i][j]->lock != TRUE)) {
+          double sum_occupancy = 0.0;
+          /* This code takes reference from function 'blist_avg()' in this file */
+          for(blist_t *ptr = layer->b2gmap[i][j]; ptr; ptr = ptr->next) {
+            sum_occupancy += ptr->occupancy;
+          }
+          /* This code takes reference from function 'blist_append()' in this file */
+          if((1 - sum_occupancy) >= OCCUPANCY_THRESHOLD) {
+            layer->b2gmap[i][j]->lock = TRUE;
+            layer->b2gmap[i][j]->rx = getr(1/res, cw, ch * layer->thickness);
+            layer->b2gmap[i][j]->ry = getr(1/res, ch, cw * layer->thickness);
+            layer->b2gmap[i][j]->rz = getr(1/res, layer->thickness, cw * ch);
+            layer->b2gmap[i][j]->capacitance = getcap(sh, layer->thickness, cw * ch);
+          }
+          else {
+            layer->b2gmap[i][j]->rx = 1/((1/layer->b2gmap[i][j]->rx) + ((1 / getr(1 / res, cw, ch * layer->thickness)) * (1 - sum_occupancy)));
+            layer->b2gmap[i][j]->ry = 1/((1/layer->b2gmap[i][j]->ry) + ((1 / getr(1 / res, ch, cw * layer->thickness)) * (1 - sum_occupancy)));
+            layer->b2gmap[i][j]->rz = 1/((1/layer->b2gmap[i][j]->rz) + ((1 / getr(1 / res, layer->thickness, cw * ch)) * (1 - sum_occupancy)));
+            layer->b2gmap[i][j]->lock=FALSE;
+          }
+          /* not append another blist node because no name for empty unit */
+        }
+      }
+    }
+  }
+  /* end->ZYH */
 }
 
 /* populate default set of layers	*/ 
@@ -2014,12 +2064,14 @@ void xlate_vector_b2g(grid_model_t *model, double *b, grid_model_vector_t *g, in
              */
             /* convert power density to power	*/ 
             if (type == V_POWER)
+              /* ZYH: add argument for modificated function 'blist_avg()' */
               g->cuboid[n][i][j] = blist_avg(model->layers[n].b2gmap[i][j], 
-                                             model->layers[n].flp, &b[base], type) * area;
+                                             model->layers[n].flp, &b[base], type, model->config.init_temp) * area;
             /* no conversion necessary for temperature	*/ 
             else if (type == V_TEMP)
               g->cuboid[n][i][j] = blist_avg(model->layers[n].b2gmap[i][j], 
-                                             model->layers[n].flp, &b[base], type);
+                                             model->layers[n].flp, &b[base], type, model->config.init_temp);
+              /* end->ZYH */
             else
               fatal("unknown vector type\n");
         }
