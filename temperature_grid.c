@@ -13,6 +13,10 @@
 #include "flp.h"
 #include "util.h"
 
+// to create directory for model extraction
+#include <sys/stat.h>
+#include <sys/types.h>
+
 #if SUPERLU > 0
 /* Lib for SuperLU */
 #include "slu_ddefs.h"
@@ -3301,6 +3305,9 @@ void slope_fn_grid(grid_model_t *model, double *v, grid_model_vector_t *p, doubl
       pcbidx = LAYER_PCB;	
   }
 
+  int create_directory = mkdir("./model_extract", 0777);
+  if (create_directory == 0)
+    printf("Note: new directory model_extract is created to store the extracted matrices!\n");
   FILE *fprCmatrix;
   fprCmatrix = fopen("./model_extract/Cmatrix", "wa");
   
@@ -3532,6 +3539,7 @@ void compute_temp_grid(grid_model_t *model, double *power, double *temp, double 
    * do it in multiple steps with the correct step size at each time 
    * provided by rk4. 
    */
+  printf("Begin to dump C matrix...\n");
   for (t = 0, new_h = MIN_STEP; t < time_elapsed && new_h >= MIN_STEP*DELTA; t+=h) {
       h = new_h;
       /* pass the entire grid and the tail of package nodes 
@@ -3548,6 +3556,7 @@ void compute_temp_grid(grid_model_t *model, double *power, double *temp, double 
       i++;
 #endif	
   }
+  printf("Cmatrix dumped\n");
 
 #if VERBOSE > 1
   fprintf(stdout, "no. of rk4 calls during compute_temp: %d\n", i+1);
@@ -5101,7 +5110,10 @@ void direct_SLU(grid_model_t *model, grid_model_vector_t *power, grid_model_vect
   
   // Added to dump A, B, and L matrices
   printf("\n");
-  printf("Begin to dump system matrices...\n");
+  printf("Begin to dump A, B, L matrices...\n");
+  int create_directory = mkdir("./model_extract", 0777);
+  if (create_directory == 0)
+    printf("Note: new directory model_extract is created to store the extracted matrices!\n");
   dumpA("A", &A);
   dumpBL(model);
 
