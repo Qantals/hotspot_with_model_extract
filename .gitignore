@@ -29,3 +29,7 @@ Pmatrix*
 
 # Log files
 *.log
+
+# example
+example/
+scripts/
