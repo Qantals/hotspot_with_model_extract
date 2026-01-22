@@ -339,8 +339,10 @@ int dumpBL(grid_model_t *model)
 
   printf("Bmatrix dumped\n");
   printf("Lmatrix dumped\n\n");
-  /* ZYH: exit immediately, no need of simulation */
-  exit(0);
+  /* ZYH: no temperature computing */
+  if(model->config.only_dump_used) {
+    exit(0);
+  }
   /* end->ZYH */
   
   return 0;
@@ -899,7 +901,8 @@ void populate_layers_grid(grid_model_t *model, flp_t *flp_default)
 }
 
 /* constructor */
-grid_model_t *alloc_grid_model(thermal_config_t *config, flp_t *flp_default, int do_detailed_3D)
+/* ZYH: no temperature computing */
+grid_model_t *alloc_grid_model(thermal_config_t *config, flp_t *flp_default, int do_detailed_3D, int do_only_dump)
 {
   int i;
   grid_model_t *model;
@@ -918,6 +921,10 @@ grid_model_t *alloc_grid_model(thermal_config_t *config, flp_t *flp_default, int
   model->cols = config->grid_cols;
   if(do_detailed_3D) //BU_3D: check if heterogenous RC model is on
     model->config.detailed_3D_used = TRUE; 
+  /* ZYH: no temperature computing */
+  if(do_only_dump)
+    model->config.only_dump_used = TRUE; 
+  /* end->ZYH */
   if(!strcasecmp(model->config.grid_map_mode, GRID_AVG_STR))
     model->map_mode = GRID_AVG;
   else if(!strcasecmp(model->config.grid_map_mode, GRID_MIN_STR))

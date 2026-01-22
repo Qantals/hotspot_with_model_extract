@@ -180,7 +180,7 @@ double find_res_3D(int n, int i, int j, grid_model_t *model, int choice);
 double find_cap_3D(int n, int i, int j, grid_model_t *model);	
 /* constructor/destructor */
 grid_model_t *alloc_grid_model(thermal_config_t *config, flp_t *flp_default, 
-                               int do_detailed_3D);//BU_3D: added do_detailed_3D
+                               int do_detailed_3D, int do_only_dump);//BU_3D: added do_detailed_3D; ZYH: no temperature computing
 void delete_grid_model(grid_model_t *model);
 
 /* initialization	*/

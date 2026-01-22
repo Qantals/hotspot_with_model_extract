@@ -24,6 +24,9 @@ typedef struct global_config_t_st
 	
 	/*BU_3D: Option to turn on heterogenous R-C assignment*/
 	char detailed_3D[STR_SIZE];
+	/* ZYH: no temperature computing */
+	char only_dump[STR_SIZE];
+	/* end->ZYH */
 	
 }global_config_t;
 

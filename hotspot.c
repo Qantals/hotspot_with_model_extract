@@ -83,6 +83,8 @@ void usage(int argc, char **argv)
   fprintf(stdout, "           \toverride the options from config file. e.g. \"-model_type block\" selects\n");
   fprintf(stdout, "           \tthe block model while \"-model_type grid\" selects the grid model\n");
   fprintf(stdout, "  [-detailed_3D <on/off]>\tHeterogeneous R-C assignments for specified layers. Requires a .lcf file to be specified\n"); //BU_3D: added detailed_3D option
+  /* ZYH: no temperature computing */
+  fprintf(stdout, "  [-only_dump <on/off>]\tNo temperature computing, only dump matrices\n");
 }
 
 /* 
@@ -136,6 +138,14 @@ void global_config_from_strs(global_config_t *config, str_pair *table, int size)
       strcpy(config->detailed_3D, "off");
   }
   
+  /* ZYH: no temperature computing */
+   if ((idx = get_str_index(table, size, "only_dump")) >= 0) {
+      if(sscanf(table[idx].value, "%s", config->only_dump) != 1)	
+        fatal("invalid format for configuration  parameter only_dump\n");
+  } else {
+      strcpy(config->only_dump, "off");
+  } 
+  /* end->ZYH */
 
   if ((idx = get_str_index(table, size, "l")) >= 0) {
       printf("idx = %u\n", idx);
@@ -171,7 +181,7 @@ void global_config_from_strs(global_config_t *config, str_pair *table, int size)
  */
 int global_config_to_strs(global_config_t *config, str_pair *table, int max_entries)
 {
-  if (max_entries < 7)
+  if (max_entries < 10)
     fatal("not enough entries in table\n");
 
   sprintf(table[0].name, "f");
@@ -181,7 +191,10 @@ int global_config_to_strs(global_config_t *config, str_pair *table, int max_entr
   sprintf(table[4].name, "d");
   sprintf(table[5].name, "detailed_3D");
   sprintf(table[6].name, "l");
+  sprintf(table[7].name, "v");
   sprintf(table[8].name, "bm");
+  /* ZYH: no temperature computing */
+  sprintf(table[9].name, "only_dump");
   sprintf(table[0].value, "%s", config->flp_file);
   sprintf(table[1].value, "%s", config->p_infile);
   sprintf(table[2].value, "%s", config->t_outfile);
@@ -191,8 +204,10 @@ int global_config_to_strs(global_config_t *config, str_pair *table, int max_entr
   sprintf(table[6].value, "%s", leakage_vector);
   sprintf(table[7].value, "%s", volt_vector);
   sprintf(table[8].value, "%s", config->bm_infile);
+  /* ZYH: no temperature computing */
+  sprintf(table[9].value, "%s", config->only_dump);
 
-  return 6;
+  return 10;
 }
 
 /* 
@@ -419,6 +434,8 @@ int main(int argc, char **argv)
 
   /*BU_3D: variable for heterogenous R-C model */
   int do_detailed_3D = FALSE; //BU_3D: do_detailed_3D, false by default
+  /* ZYH: no temperature computing */
+  int do_only_dump = FALSE;
   if (!(argc >= 5 && argc % 2)) {
       usage(argc, argv);
       return 1;
@@ -499,6 +516,14 @@ int main(int argc, char **argv)
   else if(strcmp(global_config.detailed_3D, "off")){
       fatal("detailed_3D parameter should be either \'on\' or \'off\'\n");
   }//end->BU_3D
+  /* ZYH: no temperature computing */
+  if(!strcmp(global_config.only_dump, "on")){
+      do_only_dump = TRUE;
+  }
+  else if(strcmp(global_config.only_dump, "off")){
+      fatal("only_dump parameter should be either \'on\' or \'off\'\n");
+  }
+  /* end->ZYH */
 
   /* get defaults */
   thermal_config = default_thermal_config();
@@ -543,7 +568,8 @@ int main(int argc, char **argv)
 
   //BU_3D: added do_detailed_3D to alloc_RC_model. Detailed 3D modeling can only be used with grid-level modeling.
   /* allocate and initialize the RC model	*/
-  model = alloc_RC_model(&thermal_config, flp, do_detailed_3D); 
+  /* ZYH: no temperature computing */
+  model = alloc_RC_model(&thermal_config, flp, do_detailed_3D, do_only_dump); 
 
   if (model->type == BLOCK_MODEL && do_detailed_3D) 
     fatal("Detailed 3D option can only be used with grid model\n"); //end->BU_3D

@@ -219,6 +219,8 @@ typedef struct thermal_config_t_st
        /* type of memory passed for specific customization DDR, 3Dmem, 2.5D, 3D*/
  	char type[STR_SIZE];	
 	int detailed_3D_used; //BU_3D: Added parameter to check for heterogenous R-C model 
+	/* ZYH: no temperature computing */
+	int only_dump_used;
 }thermal_config_t;
 
 /* defaults	*/
@@ -361,7 +363,8 @@ typedef struct RC_model_t_st
 
 /* constructor/destructor	*/
 /* placeholder is an empty floorplan frame with only the names of the functional units	*/
-RC_model_t *alloc_RC_model(thermal_config_t *config, flp_t *placeholder, int do_detailed_3D);
+/* ZYH: no temperature computing */
+RC_model_t *alloc_RC_model(thermal_config_t *config, flp_t *placeholder, int do_detailed_3D, int do_only_dump);
 void delete_RC_model(RC_model_t *model);
 
 /* initialization	*/
