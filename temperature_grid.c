@@ -902,7 +902,7 @@ void populate_layers_grid(grid_model_t *model, flp_t *flp_default)
 
 /* constructor */
 /* ZYH: no temperature computing */
-grid_model_t *alloc_grid_model(thermal_config_t *config, flp_t *flp_default, int do_detailed_3D, int do_only_dump)
+grid_model_t *alloc_grid_model(thermal_config_t *config, flp_t *flp_default, int do_detailed_3D, int do_only_dump, int do_no_dump_C)
 {
   int i;
   grid_model_t *model;
@@ -924,6 +924,9 @@ grid_model_t *alloc_grid_model(thermal_config_t *config, flp_t *flp_default, int
   /* ZYH: no temperature computing */
   if(do_only_dump)
     model->config.only_dump_used = TRUE; 
+  /* ZYH: no dump C matrix */
+  if(do_no_dump_C)
+    model->config.no_dump_C_used = TRUE; 
   /* end->ZYH */
   if(!strcasecmp(model->config.grid_map_mode, GRID_AVG_STR))
     model->map_mode = GRID_AVG;
@@ -3367,8 +3370,10 @@ void slope_fn_grid(grid_model_t *model, double *v, grid_model_vector_t *p, doubl
   int create_directory = mkdir("./model_extract", 0777);
   if (create_directory == 0)
     printf("Note: new directory model_extract is created to store the extracted matrices!\n");
-  FILE *fprCmatrix;
-  fprCmatrix = fopen("./model_extract/Cmatrix", "wa");
+  FILE *fprCmatrix = NULL;
+  if (model->config.no_dump_C_used == 0) {
+    fprCmatrix = fopen("./model_extract/Cmatrix", "wa");
+  }
   
   /* for each grid cell	*/
   for (n = 0; n < nl; n++)
@@ -3475,13 +3480,15 @@ void slope_fn_grid(grid_model_t *model, double *v, grid_model_vector_t *p, doubl
           if (j == 0)
             psum += (x[SOLDER_W] - A3D(v, n, i, j, nl, nr, nc)) / (l[n].rx / 2.0 + nr * model->pack.r_solder1_x);
         }
-        if (model->config.detailed_3D_used == 1)
-        {
-          fprintf(fprCmatrix, "%.10f\n", find_cap_3D(n, i, j, model));
-        }
-        else
-        {
-          fprintf(fprCmatrix,"%.10f\n",l[n].c);
+        if (model->config.no_dump_C_used == 0) {
+          if (model->config.detailed_3D_used == 1)
+          {
+            fprintf(fprCmatrix, "%.10f\n", find_cap_3D(n, i, j, model));
+          }
+          else
+          {
+            fprintf(fprCmatrix,"%.10f\n",l[n].c);
+          }
         }
         
          /* update the current cell's temperature	*/
@@ -3492,43 +3499,45 @@ void slope_fn_grid(grid_model_t *model, double *v, grid_model_vector_t *p, doubl
       }
 
   package_RC_t *pk = &model->pack;
-  fprintf(fprCmatrix, "%.10f\n", pk->c_sp_per_x);                         //0
-  fprintf(fprCmatrix, "%.10f\n", pk->c_sp_per_x);                         //1
-  fprintf(fprCmatrix, "%.10f\n", pk->c_sp_per_y);                         //2
-  fprintf(fprCmatrix, "%.10f\n", pk->c_sp_per_y);                         //3
-  fprintf(fprCmatrix, "%.10f\n", (pk->c_hs_c_per_x + pk->c_amb_c_per_x)); //4
-  fprintf(fprCmatrix, "%.10f\n", (pk->c_hs_c_per_x + pk->c_amb_c_per_x)); //5
-  fprintf(fprCmatrix, "%.10f\n", (pk->c_hs_c_per_y + pk->c_amb_c_per_y)); //6
-  fprintf(fprCmatrix, "%.10f\n", (pk->c_hs_c_per_y + pk->c_amb_c_per_y)); //7
-  fprintf(fprCmatrix, "%.10f\n", (pk->c_hs_per + pk->c_amb_per));         //8
-  fprintf(fprCmatrix, "%.10f\n", (pk->c_hs_per + pk->c_amb_per));         //9
-  fprintf(fprCmatrix, "%.10f\n", (pk->c_hs_per + pk->c_amb_per));         //10
-  fprintf(fprCmatrix, "%.10f\n", (pk->c_hs_per + pk->c_amb_per));         //11
-  if (model_secondary)
-  {
-    fprintf(fprCmatrix, "%.10f\n", pk->c_sub_per_x);                            //12
-    fprintf(fprCmatrix, "%.10f\n", pk->c_sub_per_x);                            //13
-    fprintf(fprCmatrix, "%.10f\n", pk->c_sub_per_y);                            //14
-    fprintf(fprCmatrix, "%.10f\n", pk->c_sub_per_y);                            //15
-    fprintf(fprCmatrix, "%.10f\n", pk->c_solder_per_x);                         //16
-    fprintf(fprCmatrix, "%.10f\n", pk->c_solder_per_x);                         //17
-    fprintf(fprCmatrix, "%.10f\n", pk->c_solder_per_y);                         //18
-    fprintf(fprCmatrix, "%.10f\n", pk->c_solder_per_y);                         //19
-    fprintf(fprCmatrix, "%.10f\n", pk->c_pcb_c_per_x + pk->c_amb_sec_c_per_x);  //20
-    fprintf(fprCmatrix, "%.10f\n", pk->c_pcb_c_per_x + pk->c_amb_sec_c_per_x);  //21
-    fprintf(fprCmatrix, "%.10f\n", pk->c_pcb_c_per_y + pk->c_amb_sec_c_per_y);  //22
-    fprintf(fprCmatrix, "%.10f\n", pk->c_pcb_c_per_y + pk->c_amb_sec_c_per_y);  //23
-    fprintf(fprCmatrix, "%.10f\n", pk->c_pcb_per + pk->c_amb_sec_per);          //24
-    fprintf(fprCmatrix, "%.10f\n", pk->c_pcb_per + pk->c_amb_sec_per);          //25
-    fprintf(fprCmatrix, "%.10f\n", pk->c_pcb_per + pk->c_amb_sec_per);          //26
-    fprintf(fprCmatrix, "%.10f\n", pk->c_pcb_per + pk->c_amb_sec_per);          //27
-    fprintf(fprCmatrix, "\n");
-    fclose(fprCmatrix);
-  }
-  else
-  {  
-    fprintf(fprCmatrix, "\n");
-    fclose(fprCmatrix);
+  if (model->config.no_dump_C_used == 0) {
+    fprintf(fprCmatrix, "%.10f\n", pk->c_sp_per_x);                         //0
+    fprintf(fprCmatrix, "%.10f\n", pk->c_sp_per_x);                         //1
+    fprintf(fprCmatrix, "%.10f\n", pk->c_sp_per_y);                         //2
+    fprintf(fprCmatrix, "%.10f\n", pk->c_sp_per_y);                         //3
+    fprintf(fprCmatrix, "%.10f\n", (pk->c_hs_c_per_x + pk->c_amb_c_per_x)); //4
+    fprintf(fprCmatrix, "%.10f\n", (pk->c_hs_c_per_x + pk->c_amb_c_per_x)); //5
+    fprintf(fprCmatrix, "%.10f\n", (pk->c_hs_c_per_y + pk->c_amb_c_per_y)); //6
+    fprintf(fprCmatrix, "%.10f\n", (pk->c_hs_c_per_y + pk->c_amb_c_per_y)); //7
+    fprintf(fprCmatrix, "%.10f\n", (pk->c_hs_per + pk->c_amb_per));         //8
+    fprintf(fprCmatrix, "%.10f\n", (pk->c_hs_per + pk->c_amb_per));         //9
+    fprintf(fprCmatrix, "%.10f\n", (pk->c_hs_per + pk->c_amb_per));         //10
+    fprintf(fprCmatrix, "%.10f\n", (pk->c_hs_per + pk->c_amb_per));         //11
+    if (model_secondary)
+    {
+      fprintf(fprCmatrix, "%.10f\n", pk->c_sub_per_x);                            //12
+      fprintf(fprCmatrix, "%.10f\n", pk->c_sub_per_x);                            //13
+      fprintf(fprCmatrix, "%.10f\n", pk->c_sub_per_y);                            //14
+      fprintf(fprCmatrix, "%.10f\n", pk->c_sub_per_y);                            //15
+      fprintf(fprCmatrix, "%.10f\n", pk->c_solder_per_x);                         //16
+      fprintf(fprCmatrix, "%.10f\n", pk->c_solder_per_x);                         //17
+      fprintf(fprCmatrix, "%.10f\n", pk->c_solder_per_y);                         //18
+      fprintf(fprCmatrix, "%.10f\n", pk->c_solder_per_y);                         //19
+      fprintf(fprCmatrix, "%.10f\n", pk->c_pcb_c_per_x + pk->c_amb_sec_c_per_x);  //20
+      fprintf(fprCmatrix, "%.10f\n", pk->c_pcb_c_per_x + pk->c_amb_sec_c_per_x);  //21
+      fprintf(fprCmatrix, "%.10f\n", pk->c_pcb_c_per_y + pk->c_amb_sec_c_per_y);  //22
+      fprintf(fprCmatrix, "%.10f\n", pk->c_pcb_c_per_y + pk->c_amb_sec_c_per_y);  //23
+      fprintf(fprCmatrix, "%.10f\n", pk->c_pcb_per + pk->c_amb_sec_per);          //24
+      fprintf(fprCmatrix, "%.10f\n", pk->c_pcb_per + pk->c_amb_sec_per);          //25
+      fprintf(fprCmatrix, "%.10f\n", pk->c_pcb_per + pk->c_amb_sec_per);          //26
+      fprintf(fprCmatrix, "%.10f\n", pk->c_pcb_per + pk->c_amb_sec_per);          //27
+      fprintf(fprCmatrix, "\n");
+      fclose(fprCmatrix);
+    }
+    else
+    {  
+      fprintf(fprCmatrix, "\n");
+      fclose(fprCmatrix);
+    }
   }
   /* for each grid cell	*/
   slope_fn_pack(model, v, p, dv);
@@ -3598,7 +3607,9 @@ void compute_temp_grid(grid_model_t *model, double *power, double *temp, double 
    * do it in multiple steps with the correct step size at each time 
    * provided by rk4. 
    */
-  printf("Begin to dump C matrix...\n");
+  if (model->config.no_dump_C_used == 0) {
+    printf("Begin to dump C matrix...\n");
+  }
   for (t = 0, new_h = MIN_STEP; t < time_elapsed && new_h >= MIN_STEP*DELTA; t+=h) {
       h = new_h;
       /* pass the entire grid and the tail of package nodes 
@@ -3615,7 +3626,9 @@ void compute_temp_grid(grid_model_t *model, double *power, double *temp, double 
       i++;
 #endif	
   }
-  printf("Cmatrix dumped\n");
+  if (model->config.no_dump_C_used == 0) {
+    printf("Cmatrix dumped\n");
+  }
 
 #if VERBOSE > 1
   fprintf(stdout, "no. of rk4 calls during compute_temp: %d\n", i+1);

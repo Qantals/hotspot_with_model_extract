@@ -26,6 +26,8 @@ typedef struct global_config_t_st
 	char detailed_3D[STR_SIZE];
 	/* ZYH: no temperature computing */
 	char only_dump[STR_SIZE];
+	/* ZYH: no dump C matrix */
+	char no_dump_C[STR_SIZE];
 	/* end->ZYH */
 	
 }global_config_t;

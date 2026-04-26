@@ -108,6 +108,8 @@ thermal_config_t default_thermal_config(void)
 	config.detailed_3D_used = 0;	//BU_3D: by default detailed 3D modeling is disabled.	
 	/* ZYH: no temperature computing */
 	config.only_dump_used = 0;
+	/* ZYH: no dump C matrix */
+	config.no_dump_C_used = 0;
 	/* end->ZYH */
 
 	return config;
@@ -587,7 +589,7 @@ void debug_print_package_RC(package_RC_t *p)
  * can be an empty floorplan frame with only the names of the functional 
  * units. for the grid model, it is the default floorplan
  */
-RC_model_t *alloc_RC_model(thermal_config_t *config, flp_t *placeholder, int do_detailed_3D, int do_only_dump) //BU_3D: do_detailed_3D option added. ZYH: no temperature computing
+RC_model_t *alloc_RC_model(thermal_config_t *config, flp_t *placeholder, int do_detailed_3D, int do_only_dump, int do_no_dump_C) //BU_3D: do_detailed_3D option added. ZYH: no temperature computing, no dump C matrix
 {
 	RC_model_t *model= (RC_model_t *) calloc (1, sizeof(RC_model_t));
 	if (!model)
@@ -598,7 +600,7 @@ RC_model_t *alloc_RC_model(thermal_config_t *config, flp_t *placeholder, int do_
 		model->config = &model->block->config;
 	} else if(!(strcasecmp(config->model_type, GRID_MODEL_STR))) {
 		model->type = GRID_MODEL;
-		model->grid = alloc_grid_model(config, placeholder, do_detailed_3D, do_only_dump);
+		model->grid = alloc_grid_model(config, placeholder, do_detailed_3D, do_only_dump, do_no_dump_C);
 		model->config = &model->grid->config;
 	} else 
 		fatal("unknown model type\n");
