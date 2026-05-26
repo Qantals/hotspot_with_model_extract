@@ -19,6 +19,21 @@
 #include "util.h"
 #include "hotspot.h"
 
+/*ZYH: helper for hotspot_vector size */
+static int hotspot_vector_size(RC_model_t *model)
+{
+  if (model->type == BLOCK_MODEL)
+    return model->block->n_nodes;
+  if (model->type == GRID_MODEL) {
+    int total_nodes = model->grid->total_n_blocks + EXTRA;
+    if (model->grid->config.model_secondary)
+      total_nodes += EXTRA_SEC;
+    return total_nodes;
+  }
+  fatal("unknown model type\n");
+  return 0;
+}
+
 /* HotSpot thermal model is offered in two flavours - the block
  * version and the grid version. The block model models temperature
  * per functional block of the floorplan while the grid model
@@ -87,6 +102,8 @@ void usage(int argc, char **argv)
   fprintf(stdout, "  [-only_dump <on/off>]\tNo temperature computing, only dump matrices\n");
   /* ZYH: no dump C matrix */
   fprintf(stdout, "  [-no_dump_C <on/off>]\tNo C matrix dumped for transient run\n");
+  /*ZYH: init transient with steady temp */
+  fprintf(stdout, "  [-init_steady <on/off>]\tUse steady-state temperature as transient init\n");
 }
 
 /* 
@@ -154,6 +171,13 @@ void global_config_from_strs(global_config_t *config, str_pair *table, int size)
   } else {
       strcpy(config->no_dump_C, "off");
   } 
+  /*ZYH: init transient with steady temp */
+   if ((idx = get_str_index(table, size, "init_steady")) >= 0) {
+      if(sscanf(table[idx].value, "%s", config->init_steady) != 1)	
+        fatal("invalid format for configuration  parameter init_steady\n");
+  } else {
+      strcpy(config->init_steady, "off");
+  }
   /* end->ZYH */
 
   if ((idx = get_str_index(table, size, "l")) >= 0) {
@@ -190,7 +214,7 @@ void global_config_from_strs(global_config_t *config, str_pair *table, int size)
  */
 int global_config_to_strs(global_config_t *config, str_pair *table, int max_entries)
 {
-  if (max_entries < 11)
+  if (max_entries < 12)
     fatal("not enough entries in table\n");
 
   sprintf(table[0].name, "f");
@@ -206,6 +230,8 @@ int global_config_to_strs(global_config_t *config, str_pair *table, int max_entr
   sprintf(table[9].name, "only_dump");
   /* ZYH: no dump C matrix */
   sprintf(table[10].name, "no_dump_C");
+  /*ZYH: init transient with steady temp */
+  sprintf(table[11].name, "init_steady");
   sprintf(table[0].value, "%s", config->flp_file);
   sprintf(table[1].value, "%s", config->p_infile);
   sprintf(table[2].value, "%s", config->t_outfile);
@@ -219,8 +245,10 @@ int global_config_to_strs(global_config_t *config, str_pair *table, int max_entr
   sprintf(table[9].value, "%s", config->only_dump);
   /* ZYH: no dump C matrix */
   sprintf(table[10].value, "%s", config->no_dump_C);
+  /*ZYH: init transient with steady temp */
+  sprintf(table[11].value, "%s", config->init_steady);
 
-  return 11;
+  return 12;
 }
 
 /* 
@@ -451,6 +479,8 @@ int main(int argc, char **argv)
   int do_only_dump = FALSE;
   /* ZYH: no dump C matrix */
   int do_no_dump_C = FALSE;
+  /*ZYH: init transient with steady temp */
+  int do_init_steady = FALSE;
   if (!(argc >= 5 && argc % 2)) {
       usage(argc, argv);
       return 1;
@@ -545,6 +575,13 @@ int main(int argc, char **argv)
   else if(strcmp(global_config.no_dump_C, "off")){
       fatal("no_dump_C parameter should be either \'on\' or \'off\'\n");
   }
+    /*ZYH: init transient with steady temp */
+    if(!strcmp(global_config.init_steady, "on")){
+      do_init_steady = TRUE;
+    }
+    else if(strcmp(global_config.init_steady, "off")){
+      fatal("init_steady parameter should be either \'on\' or \'off\'\n");
+    }
   /* end->ZYH */
 
   /* get defaults */
@@ -619,12 +656,12 @@ int main(int argc, char **argv)
   overall_power = hotspot_vector(model);
 
   /* set up initial instantaneous temperatures */
-  if (do_transient && strcmp(model->config->init_file, NULLFILE)) {
+  if (do_transient && !do_init_steady && strcmp(model->config->init_file, NULLFILE)) {
       if (!model->config->dtm_used)	/* initial T = steady T for no DTM	*/
         read_temp(model, temp, model->config->init_file, FALSE);
       else	/* initial T = clipped steady T with DTM	*/
         read_temp(model, temp, model->config->init_file, TRUE);
-  } else if (do_transient)	/* no input file - use init_temp as the common temperature	*/
+  } else if (do_transient && !do_init_steady)	/* no input file - use init_temp as the common temperature	*/
     set_temp(model, temp, model->config->init_temp);
 
   /* n is the number of functional blocks in the block model
@@ -696,9 +733,104 @@ int main(int argc, char **argv)
   {
     model->bank_modes[i] = bank_modes[i];
   }
+
+  /*ZYH: init transient with steady temp */
+  if (do_transient && do_init_steady) {
+    int pre_lines = 0;
+    int vec_size = hotspot_vector_size(model);
+
+    zero_dvector(overall_power, vec_size);
+    lines = 0;
+
+    /* read the instantaneous power trace to compute average power */
+    vals = dvector(MAX_UNITS);
+    while ((num = read_vals(pin, vals)) != 0) {
+        if (num != n)
+          fatal("invalid trace file format\n");
+
+        /* permute the power numbers according to the floorplan order */
+        if (model->type == BLOCK_MODEL)
+          for (i = 0; i < n; i++)
+            power[get_blk_index(flp, names[i])] = vals[i];
+        else
+          for (i = 0, base = 0, count = 0; i < model->grid->n_layers; i++) {
+              if (model->grid->layers[i].has_power) {
+                  for (j = 0; j < model->grid->layers[i].flp->n_units; j++) {
+                      idx = get_blk_index(model->grid->layers[i].flp, names[count+j]);
+                      power[base+idx] = vals[count+j];
+                  }
+                  count += model->grid->layers[i].flp->n_units;
+              }	
+              base += model->grid->layers[i].flp->n_units;	
+          }
+
+        /* for computing average */
+        if (model->type == BLOCK_MODEL)
+          for (i = 0; i < n; i++)
+            overall_power[i] += power[i];
+        else
+          for (i = 0, base = 0; i < model->grid->n_layers; i++) {
+              if (model->grid->layers[i].has_power)
+                for (j = 0; j < model->grid->layers[i].flp->n_units; j++)
+                  overall_power[base+j] += power[base+j];
+              base += model->grid->layers[i].flp->n_units;	
+          }
+
+        pre_lines++;
+    }
+
+    if (!pre_lines)
+      fatal("no power numbers in trace file\n");
+
+    /* average power */
+    if (model->type == BLOCK_MODEL)
+      for (i = 0; i < n; i++)
+        overall_power[i] /= pre_lines;
+    else
+      for (i = 0, base = 0; i < model->grid->n_layers; i++) {
+          if (model->grid->layers[i].has_power)
+            for (j = 0; j < model->grid->layers[i].flp->n_units; j++)
+              overall_power[base+j] /= pre_lines;
+          base += model->grid->layers[i].flp->n_units;	
+      }
+
+    /* natural convection r_convec iteration, for steady-state only */
+    natural_convergence = 0;
+    if (natural) {
+        while (!natural_convergence) {
+            r_convec_old = model->config->r_convec;
+            steady_state_temp(model, overall_power, steady_temp);
+            avg_sink_temp = calc_sink_temp(model, steady_temp) + SMALL_FOR_CONVEC;
+            natural = package_model(model->config, table, size, avg_sink_temp);
+            populate_R_model(model, flp);
+            if (avg_sink_temp > MAX_SINK_TEMP)
+              fatal("too high power for a natural convection package -- possible thermal runaway\n");
+            if (fabs(model->config->r_convec-r_convec_old) < NATURAL_CONVEC_TOL)
+              natural_convergence = 1;
+        }
+    } else
+      steady_state_temp(model, overall_power, steady_temp);
+
+    copy_dvector(temp, steady_temp, vec_size);
+    /*ZYH: init transient with steady temp */
+    if (model->type == GRID_MODEL)
+      init_transient_from_steady_grid(model->grid, temp);
+
+    /* reset for transient loop */
+    zero_dvector(overall_power, vec_size);
+    total_power = 0.0;
+    lines = 0;
+
+    if (fseek(pin, 0, SEEK_SET) != 0)
+      fatal("unable to rewind power trace input file for init_steady\n");
+    if (read_names(pin, names) != n)
+      fatal("no. of units in floorplan and trace file differ\n");
+  }
+  /* end->ZYH */
   
   /* read the instantaneous power trace	*/
-  vals = dvector(MAX_UNITS);
+  if (!do_transient || !do_init_steady)
+    vals = dvector(MAX_UNITS);
   vals_withLeak = dvector(MAX_UNITS);
   while ((num=read_vals(pin, vals)) != 0) {
       if(num != n)
@@ -736,7 +868,10 @@ int main(int argc, char **argv)
            * this is used to maintain the internal grid temperatures 
            * across multiple calls of compute_temp
            */
-          if (model->type == BLOCK_MODEL || lines == 0)
+          /*ZYH: init transient with steady temp */
+          if (model->type == BLOCK_MODEL)
+            compute_temp(model, power, temp, power_withLeak, model->config->sampling_intvl);
+          else if (lines == 0 && !do_init_steady)
             compute_temp(model, power, temp, power_withLeak, model->config->sampling_intvl);
           else
             compute_temp(model, power, NULL, power_withLeak, model->config->sampling_intvl);

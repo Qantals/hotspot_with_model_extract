@@ -190,6 +190,8 @@ void populate_C_model_grid(grid_model_t *model, flp_t *flp);
 /* hotspot main interfaces - temperature.c	*/
 void steady_state_temp_grid(grid_model_t *model, double *power, double *temp);
 void compute_temp_grid(grid_model_t *model, double *power, double *temp, double time_elapsed);
+/*ZYH: init transient with steady temp */
+void init_transient_from_steady_grid(grid_model_t *model, double *temp);
 
 /* differs from 'dvector()' in that memory for internal nodes is also allocated	*/
 double *hotspot_vector_grid(grid_model_t *model);

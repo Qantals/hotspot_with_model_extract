@@ -3568,6 +3568,25 @@ void slope_fn_grid(grid_model_t *model, double *v, grid_model_vector_t *p, doubl
 //   fclose(fp);
 // }
 
+/*ZYH: init transient with steady temp */
+void init_transient_from_steady_grid(grid_model_t *model, double *temp)
+{
+  int extra_nodes;
+  int total_nodes;
+
+  if (!model->last_steady || !model->last_trans)
+    fatal("grid steady/transient state not initialized\n");
+
+  if (model->config.model_secondary)
+    extra_nodes = EXTRA + EXTRA_SEC;
+  else
+    extra_nodes = EXTRA;
+
+  total_nodes = model->rows * model->cols * model->n_layers + extra_nodes;
+  copy_dvector(model->last_trans->cuboid[0][0], model->last_steady->cuboid[0][0], total_nodes);
+  model->last_temp = temp;
+}
+
 void compute_temp_grid(grid_model_t *model, double *power, double *temp, double time_elapsed)
 {
   double t, h, new_h;

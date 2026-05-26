@@ -28,6 +28,8 @@ typedef struct global_config_t_st
 	char only_dump[STR_SIZE];
 	/* ZYH: no dump C matrix */
 	char no_dump_C[STR_SIZE];
+	/*ZYH: init transient with steady temp */
+	char init_steady[STR_SIZE];
 	/* end->ZYH */
 	
 }global_config_t;
